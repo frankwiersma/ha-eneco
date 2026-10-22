@@ -1,6 +1,6 @@
 """Read measured heat values without confusing missing data with zero usage."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -24,6 +24,8 @@ def heat_days(snapshot: dict[str, Any]) -> dict[date, dict[str, float | None]]:
             days[day] = {
                 "usage": None if high is None and low is None else (high or 0) + (low or 0),
                 "cost": amount(warmth.get("totalCostInclVat")),
+                "usage_cost": amount(warmth.get("totalUsageCostInclVat")),
+                "fixed": amount(warmth.get("fixedCostInclVat")),
             }
     return days
 
@@ -89,3 +91,14 @@ def _ambiguous(local: datetime) -> bool:
     early = local.replace(tzinfo=ENECO_TZ, fold=0)
     late = local.replace(tzinfo=ENECO_TZ, fold=1)
     return early.utcoffset() != late.utcoffset()
+
+
+def hours_in_day(day: date) -> int:
+    """23, 24 or 25: the length of a Dutch calendar day."""
+    length = local_midnight(day + timedelta(days=1)) - local_midnight(day)
+    return round(length.total_seconds() / 3600)
+
+
+def local_midnight(day: date) -> datetime:
+    """The UTC start of a Dutch calendar day."""
+    return datetime.combine(day, datetime.min.time(), ENECO_TZ).astimezone(UTC)

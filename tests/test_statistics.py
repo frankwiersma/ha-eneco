@@ -19,47 +19,72 @@ COST = "eneco:heat_1_2_cost"
 FIXED = "eneco:heat_1_2_fixed_cost"
 
 
-class FakeEneco:
-    """Serves hourly groups for the requested local days, like the usages API."""
+def warmth(usage, fixed):
+    """Usage in MJ, fixed cost in cents; usage costs 4 cents per MJ."""
+    return {
+        "status": "MEASURED",
+        "high": {"scale": 3, "value": usage},
+        "low": {"scale": 3, "value": 0},
+        "totalUsageCostInclVat": {"scale": 2, "value": usage * 4},
+        "fixedCostInclVat": {"scale": 2, "value": fixed},
+        "totalCostInclVat": {"scale": 2, "value": usage * 4 + fixed},
+    }
 
-    def __init__(self, days):
-        self.days = days
+
+class FakeEneco:
+    """Serves the usages API: full hours per day, or before hourly metering a daily
+    total with only the first hour in the hourly data, as Eneco does."""
+
+    def __init__(self, hourly, daily_only=()):
+        self.hourly = hourly  # day -> 24 usages
+        self.daily_only = dict(daily_only)  # day -> usage of the whole day
         self.requests = []
 
-    async def hours(self, customer_id, account_id, start, end):
-        self.requests.append((start, end))
-        entries = []
+    def _range(self, start, end):
         day = start
         while day < end:
-            for hour, usage in enumerate(self.days.get(day, [])):
+            yield day
+            day += timedelta(days=1)
+
+    async def days(self, customer_id, account_id, start, end):
+        self.requests.append(("Day", start, end))
+        entries = []
+        for day in self._range(start, end):
+            if day in self.hourly:
+                total = warmth(sum(self.hourly[day]), 7 * 24)
+            elif day in self.daily_only:
+                total = warmth(self.daily_only[day], 7 * 24)
+            else:
+                continue
+            entries.append({"actual": {"date": f"{day.isoformat()}T00:00:00Z", "warmth": total}})
+        return [{"entries": entries}]
+
+    async def hours(self, customer_id, account_id, start, end):
+        self.requests.append(("Hour", start, end))
+        entries = []
+        for day in self._range(start, end):
+            usages = self.hourly.get(day) or ([0] if day in self.daily_only else [])
+            for hour, usage in enumerate(usages):
                 entries.append(
                     {
                         "actual": {
                             "date": f"{day.isoformat()}T{hour:02d}:00:00Z",
-                            "warmth": {
-                                "status": "MEASURED",
-                                "high": {"scale": 3, "value": usage},
-                                "low": {"scale": 3, "value": 0},
-                                "totalUsageCostInclVat": {"scale": 2, "value": usage * 4},
-                                "fixedCostInclVat": {"scale": 2, "value": 7},
-                            },
+                            "warmth": warmth(usage, 7),
                         }
                     }
                 )
-            day += timedelta(days=1)
         return [{"entries": entries}]
 
 
-def measured_days(first, last, usage=1):
-    days = {}
-    day = first
+def days(first, last, value):
+    result, day = {}, first
     while day <= last:
-        days[day] = [usage] * 24
+        result[day] = value
         day += timedelta(days=1)
-    return days
+    return result
 
 
-async def read(hass, statistic_id):
+async def read(hass, statistic_id, period="hour"):
     await async_wait_recording_done(hass)
     rows = await get_instance(hass).async_add_executor_job(
         statistics_during_period,
@@ -67,7 +92,7 @@ async def read(hass, statistic_id):
         datetime(2026, 1, 1, tzinfo=UTC),
         None,
         {statistic_id},
-        "hour",
+        period,
         None,
         {"state", "sum"},
     )
@@ -76,23 +101,28 @@ async def read(hass, statistic_id):
 
 @pytest.fixture
 async def setup(recorder_mock, hass):
-    eneco = FakeEneco(measured_days(date(2026, 10, 10), date(2026, 10, 20)))
+    eneco = FakeEneco(
+        hourly=days(date(2026, 9, 10), date(2026, 10, 20), [1] * 24),
+        daily_only=days(date(2026, 9, 1), date(2026, 9, 9), 5),
+    )
     return eneco, EnecoStatistics(hass, eneco, 1, 2)
 
 
-async def test_backfill_stops_at_first_week_without_readings(setup, hass):
+async def test_backfill_uses_daily_totals_before_hourly_metering(setup, hass):
     eneco, stats = setup
     await stats.async_update(date(2026, 10, 22))
     heat = await read(hass, HEAT)
-    assert len(heat) == 11 * 24
-    assert heat[0]["start"] == datetime(2026, 10, 9, 22, tzinfo=UTC).timestamp()
-    assert heat[-1]["sum"] == pytest.approx(11 * 24 * 0.001)
-    assert (await read(hass, COST))[-1]["sum"] == pytest.approx(11 * 24 * 0.04)
-    assert (await read(hass, FIXED))[-1]["sum"] == pytest.approx(11 * 24 * 0.07)
-    assert eneco.requests == [
-        (date(2026, 10, 16), date(2026, 10, 23)),
-        (date(2026, 10, 9), date(2026, 10, 16)),
-        (date(2026, 10, 2), date(2026, 10, 9)),
+    assert len(heat) == 9 + 41 * 24
+    assert heat[0]["start"] == datetime(2026, 8, 31, 22, tzinfo=UTC).timestamp()
+    assert heat[0]["state"] == pytest.approx(0.005)  # 1 September, the whole day
+    assert heat[9]["start"] == datetime(2026, 9, 9, 22, tzinfo=UTC).timestamp()
+    assert heat[-1]["sum"] == pytest.approx(9 * 0.005 + 41 * 24 * 0.001)
+    assert (await read(hass, COST))[-1]["sum"] == pytest.approx(9 * 0.2 + 41 * 24 * 0.04)
+    assert (await read(hass, FIXED))[-1]["sum"] == pytest.approx(50 * 24 * 0.07)
+    assert [r for r in eneco.requests if r[0] == "Day"] == [
+        ("Day", date(2026, 9, 22), date(2026, 10, 23)),
+        ("Day", date(2026, 8, 22), date(2026, 9, 22)),
+        ("Day", date(2026, 7, 22), date(2026, 8, 22)),
     ]
     metadata = await get_instance(hass).async_add_executor_job(get_metadata, hass)
     assert metadata[HEAT][1]["unit_of_measurement"] == "GJ"
@@ -105,17 +135,17 @@ async def test_update_rewrites_recent_days_and_continues_the_total(setup, hass):
     await stats.async_update(date(2026, 10, 22))
     before = {row["start"]: row["sum"] for row in await read(hass, HEAT)}
 
-    eneco.days[date(2026, 10, 19)] = [2] * 24  # Eneco corrects a recent day
-    eneco.days[date(2026, 10, 21)] = [1] * 24  # and reports a new one
+    eneco.hourly[date(2026, 10, 19)] = [2] * 24  # Eneco corrects a recent day
+    eneco.hourly[date(2026, 10, 21)] = [1] * 24  # and reports a new one
     eneco.requests.clear()
     await stats.async_update(date(2026, 10, 23))
 
-    assert eneco.requests == [(date(2026, 10, 17), date(2026, 10, 24))]
+    assert eneco.requests == [("Hour", date(2026, 10, 17), date(2026, 10, 24))]
     heat = await read(hass, HEAT)
-    assert len(heat) == 12 * 24
+    assert len(heat) == 9 + 42 * 24
     untouched = datetime(2026, 10, 16, 21, tzinfo=UTC).timestamp()
     assert {r["start"]: r["sum"] for r in heat}[untouched] == before[untouched]
-    assert heat[-1]["sum"] == pytest.approx((12 * 24 + 24) * 0.001)
+    assert heat[-1]["sum"] == pytest.approx(9 * 0.005 + (42 * 24 + 24) * 0.001)
     sums = [row["sum"] for row in heat]
     assert sums == sorted(sums)
 
@@ -127,12 +157,10 @@ async def test_statistic_added_by_an_update_gets_full_history(setup, hass):
     assert await read(hass, FIXED) == []
 
     updated = EnecoStatistics(hass, eneco, 1, 2)
-    eneco.requests.clear()
     await updated.async_update(date(2026, 10, 22))
-    assert len(eneco.requests) == 3  # backfill again, once
-    assert len(await read(hass, FIXED)) == 11 * 24
-    assert (await read(hass, HEAT))[-1]["sum"] == pytest.approx(11 * 24 * 0.001)
+    assert len(await read(hass, FIXED)) == 9 + 41 * 24
+    assert (await read(hass, HEAT))[-1]["sum"] == pytest.approx(9 * 0.005 + 41 * 24 * 0.001)
 
     eneco.requests.clear()
     await updated.async_update(date(2026, 10, 22))
-    assert eneco.requests == [(date(2026, 10, 17), date(2026, 10, 23))]
+    assert eneco.requests == [("Hour", date(2026, 10, 17), date(2026, 10, 23))]

@@ -2,7 +2,7 @@
 
 Read your Mijn Eneco **district heating** consumption, costs and advance payment in Home Assistant. Unofficial integration, installed through HACS, with Dutch and English translations.
 
-**Early release (0.3.0).** Normal sign-in, reading a real heat account, restoring its saved session and repeating normal sign-in have been tested live. Email-code handling, expired-token recovery and the hourly statistics import are covered by automated tests, the import against a real recorder.
+**Early release (0.3.1).** Normal sign-in, reading a real heat account, restoring its saved session and repeating normal sign-in have been tested live. Email-code handling, expired-token recovery and the hourly statistics import are covered by automated tests, the import against a real recorder.
 
 ## Install
 
@@ -51,7 +51,7 @@ The integration imports Eneco's hourly heat readings as long-term statistics, at
 
 Go to **Settings → Dashboards → Energy → Gas consumption → Add gas source**, choose **Eneco heat**, and under costs choose **Use an entity tracking the total costs** with **Eneco heat cost**. Home Assistant has no separate heat source; the gas source accepts GJ. Name the source, for example, *Stadswarmte*.
 
-On first start the integration fills history back to the first full week without readings. Eneco reports hours during the day, so every refresh imports the new hours and rewrites the three days before the last imported hour, so late fills and corrections from Eneco end up in the totals. For periods where Eneco only has daily values, such as the first weeks of a contract, the day arrives as one value at midnight. Eneco labels readings with Dutch local time; the import converts them to UTC, including the repeated hour when daylight saving time ends. The Energy dashboard gets the usage cost, because fixed charges are not caused by consumption. The fixed charges have their own statistic, so a chart can stack both into the full cost; the cost sensors above include them too. A statistic added by an update gets the full history on its first run.
+On first start the integration fills the full history. Daily readings mark where it starts: it walks back a month at a time until a month without readings. From the first day with every hour measured, hours are imported as they are. Before that, Eneco's hourly data is partial (at the start of a contract it can hold only the first hour of each day), so those days come in as one row at local midnight with the day's total. After that, every refresh imports the new hours, since Eneco reports hours during the day, and rewrites the three days before the last imported hour, so late fills and corrections from Eneco end up in the totals. Eneco labels readings with Dutch local time; the import converts them to UTC, including the repeated hour when daylight saving time ends. The Energy dashboard gets the usage cost, because fixed charges are not caused by consumption. The fixed charges have their own statistic, so a chart can stack both into the full cost; the cost sensors above include them too. A statistic added by an update gets the full history on its first run.
 
 ## Privacy
 

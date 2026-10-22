@@ -1,5 +1,6 @@
 """Import measured heat hours as long-term statistics for the Energy dashboard."""
 
+from collections import Counter
 from datetime import date, datetime, timedelta
 
 from homeassistant.components.recorder import get_instance
@@ -20,12 +21,13 @@ from homeassistant.util.unit_conversion import EnergyConverter
 
 from .api import EnecoClient
 from .const import DOMAIN
-from .data import ENECO_TZ, heat_hours
+from .data import ENECO_TZ, heat_days, heat_hours, hours_in_day, local_midnight
 
 CHUNK = timedelta(days=7)
+MONTH = timedelta(days=31)
 # Eneco can still fill in or correct hours of the days before its latest reading.
 REVISE = timedelta(days=3)
-MAX_BACKFILL_CHUNKS = 104
+MAX_BACKFILL_MONTHS = 36
 
 
 class EnecoStatistics:
@@ -116,16 +118,47 @@ class EnecoStatistics:
         return hours
 
     async def _backfill(self, today: date) -> dict[datetime, dict[str, float | None]]:
-        """Walk back a week at a time until a week without readings precedes the data."""
-        hours: dict[datetime, dict[str, float | None]] = {}
+        """The full history: hours from hourly metering on, daily totals before it.
+
+        Daily readings mark where the history starts; walking back stops at the first
+        month without any. Days before the first day with every hour measured come in
+        as one row at local midnight, because the hourly data of that period is partial.
+        """
+        days: dict[date, dict[str, float | None]] = {}
         end = today + timedelta(days=1)
-        for _ in range(MAX_BACKFILL_CHUNKS):
-            week = await self._fetch(end - CHUNK, end)
-            if not week and hours:
+        for _ in range(MAX_BACKFILL_MONTHS):
+            month = heat_days(
+                {
+                    "usages": await self.client.days(
+                        self.customer_id, self.account_id, end - MONTH, end
+                    )
+                }
+            )
+            if not month and days:
                 break
-            hours |= week
-            end -= CHUNK
-        return hours
+            days |= month
+            end -= MONTH
+        if not days:
+            return {}
+        hours = await self._fetch(min(days), today + timedelta(days=1))
+        per_day = Counter(hour.astimezone(ENECO_TZ).date() for hour in hours)
+        hourly_from = min(
+            (day for day, count in per_day.items() if count == hours_in_day(day)),
+            default=today + timedelta(days=1),
+        )
+        history = {
+            hour: values
+            for hour, values in hours.items()
+            if hour.astimezone(ENECO_TZ).date() >= hourly_from
+        }
+        for day, values in days.items():
+            if day < hourly_from:
+                history[local_midnight(day)] = {
+                    "usage": values["usage"],
+                    "cost": values["usage_cost"],
+                    "fixed": values["fixed"],
+                }
+        return history
 
     async def _sum_before(self, statistic_id: str, start: datetime) -> float:
         """The running total just before start, whatever rows will be rewritten."""

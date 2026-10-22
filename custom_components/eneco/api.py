@@ -207,38 +207,37 @@ class EnecoClient:
 
     async def snapshot(self, customer_id: int, account_id: int, today: date) -> dict[str, Any]:
         """Daily usage from the first of last month, plus the advance payment advice."""
-        session = await self.session()
-        base = f"/nl/eneco/customers/{customer_id}/accounts/{account_id}"
         start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-        end = today + timedelta(days=1)
-        usages = await self._get(
+        usages = await self.days(customer_id, account_id, start, today + timedelta(days=1))
+        session = await self.session()
+        advice = await self._get(
             session,
-            f"/dxpweb/v3{base}/usages",
-            {
-                "interval": "Day",
-                "aggregation": "Day",
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-                "extrapolate": "false",
-                "addWeather": "false",
-                "addPreviousYear": "false",
-                "addBudget": "false",
-            },
+            f"/dxpweb/v2/nl/eneco/customers/{customer_id}/accounts/{account_id}/advancepayment/advice",
         )
-        advice = await self._get(session, f"/dxpweb/v2{base}/advancepayment/advice")
-        return {"usages": usages["data"]["usages"], "advice": advice["data"]}
+        return {"usages": usages, "advice": advice["data"]}
+
+    async def days(
+        self, customer_id: int, account_id: int, start: date, end: date
+    ) -> list[dict[str, Any]]:
+        """Daily usage groups for the local days from start up to, not including, end."""
+        return await self._usages(customer_id, account_id, "Day", start, end)
 
     async def hours(
         self, customer_id: int, account_id: int, start: date, end: date
     ) -> list[dict[str, Any]]:
         """Hourly usage groups for the local days from start up to, not including, end."""
+        return await self._usages(customer_id, account_id, "Hour", start, end)
+
+    async def _usages(
+        self, customer_id: int, account_id: int, interval: str, start: date, end: date
+    ) -> list[dict[str, Any]]:
         session = await self.session()
         usages = await self._get(
             session,
             f"/dxpweb/v3/nl/eneco/customers/{customer_id}/accounts/{account_id}/usages",
             {
-                "interval": "Hour",
-                "aggregation": "Hour",
+                "interval": interval,
+                "aggregation": interval,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
                 "extrapolate": "false",
