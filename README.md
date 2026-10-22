@@ -2,7 +2,7 @@
 
 Read your Mijn Eneco **district heating** consumption, costs and advance payment in Home Assistant. Unofficial integration, installed through HACS, with Dutch and English translations.
 
-**Early release (0.1.1).** Normal sign-in, reading a real heat account, restoring its saved session and repeating normal sign-in have been tested live. Email-code handling and expired-token recovery are covered by automated tests. Long-running operation and installation in a real Home Assistant instance have not yet been verified.
+**Early release (0.2.0).** Normal sign-in, reading a real heat account, restoring its saved session and repeating normal sign-in have been tested live. Email-code handling, expired-token recovery and the hourly statistics import are covered by automated tests, the import against a real recorder.
 
 ## Install
 
@@ -10,7 +10,7 @@ Read your Mijn Eneco **district heating** consumption, costs and advance payment
 
 Open the button, or add `https://github.com/frankwiersma/ha-eneco` to **HACS → Custom repositories**, category **Integration**. Install Eneco and restart Home Assistant.
 
-For manual installation, copy `custom_components/eneco` to your Home Assistant configuration's `custom_components` directory and restart. Home Assistant **2025.10 or newer** is required.
+For manual installation, copy `custom_components/eneco` to your Home Assistant configuration's `custom_components` directory and restart. Home Assistant **2026.10 or newer** is required.
 
 ## Set up
 
@@ -37,25 +37,38 @@ Data refreshes every 30 minutes while the integration is loaded. The portal's AP
 
 Missing data stays unknown. A reported zero remains zero. Forecast consumption is excluded. Month totals cover **available reported days**, so they can change when Eneco fills gaps or corrects a reading. The latest reported day may be several days behind today; consumption sensors include a `data_through` attribute.
 
-These are portal figures, not live meter readings. Period totals deliberately have no statistics state class: they are **not cumulative meter counters** and cannot be selected directly as an Energy dashboard heat source. Historical recorder import and hourly sensors are outside this release. Electricity, gas and multiple-account selection are also outside this release.
+These are portal figures, not live meter readings. Period totals deliberately have no statistics state class: they are **not cumulative meter counters**. For the Energy dashboard, use the imported statistics below. Electricity, gas and multiple-account selection are outside this release.
+
+## Energy dashboard
+
+The integration imports Eneco's hourly heat readings as long-term statistics, at the hour they were measured rather than the moment Eneco publishes them:
+
+| Statistic | Unit | Meaning |
+|---|---|---|
+| Eneco heat | GJ | Measured heat per hour |
+| Eneco heat cost | EUR | Usage cost per hour including VAT, without fixed charges |
+
+Go to **Settings → Dashboards → Energy → Gas consumption → Add gas source**, choose **Eneco heat**, and under costs choose **Use an entity tracking the total costs** with **Eneco heat cost**. Home Assistant has no separate heat source; the gas source accepts GJ. Name the source, for example, *Stadswarmte*.
+
+On first start the integration fills history back to the first full week without readings. After that it imports once for each newly reported day and rewrites the three days before the last imported hour, so late fills and corrections from Eneco end up in the totals. Eneco labels readings with Dutch local time; the import converts them to UTC, including the repeated hour when daylight saving time ends. Fixed charges are left out because they are not caused by consumption; the cost sensors above include them.
 
 ## Privacy
 
 Your credentials and Eneco session cookies are stored locally in Home Assistant's config entry and included in its backups. Requests go directly to Eneco and its API host. There is no telemetry or external proxy. Email verification codes are used in memory during setup and are not stored in the entry. A dedicated HTTP session isolates Eneco cookies from other integrations.
 
-Never include credentials, cookies, tokens or unredacted account responses in issues.
+Never include credentials, cookies, tokens or unredacted account responses in issues. **Download diagnostics** on the integration page gives a snapshot without credentials, cookies, account numbers or location.
 
 ## Development
 
 ```sh
-python3.13 -m venv .venv
+python3.14 -m venv .venv
 .venv/bin/pip install -r requirements-test.txt
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 .venv/bin/pytest -q
 ```
 
-Tests use synthetic data and make no calls to Eneco. CI runs tests, Ruff, Hassfest and HACS validation. The client follows the API used by [Mijn Eneco](https://www.eneco.nl/mijn-eneco/); this API can change without notice.
+Tests use synthetic data and make no calls to Eneco. They run on Home Assistant's own test harness for custom integrations, pinned to the supported release. CI runs tests, Ruff, Hassfest and HACS validation. The client follows the API used by [Mijn Eneco](https://www.eneco.nl/mijn-eneco/); this API can change without notice.
 
 ## Disclaimer
 

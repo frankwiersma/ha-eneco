@@ -228,6 +228,27 @@ class EnecoClient:
         advice = await self._get(session, f"/dxpweb/v2{base}/advancepayment/advice")
         return {"usages": usages["data"]["usages"], "advice": advice["data"]}
 
+    async def hours(
+        self, customer_id: int, account_id: int, start: date, end: date
+    ) -> list[dict[str, Any]]:
+        """Hourly usage groups for the local days from start up to, not including, end."""
+        session = await self.session()
+        usages = await self._get(
+            session,
+            f"/dxpweb/v3/nl/eneco/customers/{customer_id}/accounts/{account_id}/usages",
+            {
+                "interval": "Hour",
+                "aggregation": "Hour",
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "extrapolate": "false",
+                "addWeather": "false",
+                "addPreviousYear": "false",
+                "addBudget": "false",
+            },
+        )
+        return usages["data"]["usages"]
+
     async def _get(
         self, session: dict[str, Any], path: str, params: dict[str, str] | None = None
     ) -> Any:

@@ -1,7 +1,7 @@
 """Poll Eneco and use normal sign-in when a session needs renewal."""
 
 import logging
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -21,6 +21,8 @@ from .const import (
     DOMAIN,
     UPDATE_INTERVAL_MINUTES,
 )
+from .data import ENECO_TZ, latest_day
+from .statistics import EnecoStatistics
 
 _LOGGER = logging.getLogger(__name__)
 type EnecoConfigEntry = ConfigEntry[EnecoCoordinator]
@@ -46,6 +48,8 @@ class EnecoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.client.import_cookies(entry.data[CONF_COOKIES])
         self.customer_id = entry.data[CONF_CUSTOMER_ID]
         self.account_id = entry.data[CONF_ACCOUNT_ID]
+        self.statistics = EnecoStatistics(hass, self.client, self.customer_id, self.account_id)
+        self.statistics_through: date | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -75,4 +79,24 @@ class EnecoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.hass.config_entries.async_update_entry(
                 self.config_entry, data={**self.config_entry.data, CONF_COOKIES: cookies}
             )
+        await self._async_update_statistics(data)
         return data
+
+    async def _async_update_statistics(self, data: dict[str, Any]) -> None:
+        """Import hours once per newly reported day; sensors do not wait on failures."""
+        reported = latest_day(data)
+        if reported is None or reported == self.statistics_through:
+            return
+        try:
+            await self.statistics.async_update(datetime.now(ENECO_TZ).date())
+        except (
+            EnecoError,
+            aiohttp.ClientError,
+            TimeoutError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as err:
+            _LOGGER.warning("Could not import Eneco hourly heat statistics: %s", err)
+            return
+        self.statistics_through = reported

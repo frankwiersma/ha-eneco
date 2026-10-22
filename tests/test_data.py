@@ -1,10 +1,16 @@
 """Verify delayed meter data, missing days, corrections and month boundaries."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
-from custom_components.eneco.data import heat_days, latest_day, latest_value, period_total
+from custom_components.eneco.data import (
+    heat_days,
+    heat_hours,
+    latest_day,
+    latest_value,
+    period_total,
+)
 
 
 def entry(day, high=None, low=None, cost=None, status="MEASURED"):
@@ -54,3 +60,57 @@ def test_january_previous_month_both_tariffs_and_costs():
 def test_corrected_day_is_not_counted_twice():
     data = snapshot(entry("2026-10-01", {"value": 2}), entry("2026-10-01", {"value": 1}))
     assert period_total(data, date(2026, 10, 22), "usage") == 1
+
+
+def hour(label, high=None, low=None, cost=None, status="MEASURED"):
+    return {
+        "actual": {
+            "date": label,
+            "warmth": {"status": status, "high": high, "low": low, "totalUsageCostInclVat": cost},
+        }
+    }
+
+
+def test_hours_are_dutch_wall_clock_in_utc():
+    hours = heat_hours(
+        [
+            {
+                "entries": [
+                    hour("2026-10-21T00:00:00Z", {"value": 1, "scale": 2}, cost={"value": 4}),
+                    hour("2026-10-21T01:00:00Z", {"value": 0}),
+                    hour("2026-10-21T02:00:00Z", {"value": 9}, status="ESTIMATED"),
+                    hour("2026-10-21T03:00:00Z"),
+                ]
+            }
+        ]
+    )
+    assert hours == {
+        datetime(2026, 10, 20, 22, tzinfo=UTC): {"usage": 0.01, "cost": 4},
+        datetime(2026, 10, 20, 23, tzinfo=UTC): {"usage": 0, "cost": None},
+    }
+
+
+def test_repeated_fall_back_hour_is_the_later_hour():
+    hours = heat_hours(
+        [
+            {
+                "entries": [
+                    hour("2026-10-25T01:00:00Z", {"value": 1}),
+                    hour("2026-10-25T02:00:00Z", {"value": 2}),
+                    hour("2026-10-25T02:00:00Z", {"value": 3}),
+                    hour("2026-10-25T03:00:00Z", {"value": 4}),
+                ]
+            }
+        ]
+    )
+    assert [(h.hour, v["usage"]) for h, v in sorted(hours.items())] == [
+        (23, 1),
+        (0, 2),
+        (1, 3),
+        (2, 4),
+    ]
+
+
+def test_hours_without_time_of_day_are_refused():
+    with pytest.raises(ValueError):
+        heat_hours([{"entries": [hour("2026-10-21T00:00:00Z", {"value": 1})] * 2}])
