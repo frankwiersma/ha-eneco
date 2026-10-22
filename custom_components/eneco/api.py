@@ -148,7 +148,13 @@ class EnecoClient:
             html = await resp.text()
         match = re.search(r'"stateToken":"(.*?)"', html)
         if not match:
-            raise EnecoError("Eneco's sign-in page has no state token")
+            # An existing Eneco/Okta session may complete the authorize redirect
+            # immediately. Its callback has already set the portal cookies.
+            try:
+                await self.session()
+            except EnecoAuthError as err:
+                raise EnecoError("Eneco's sign-in page has no state token") from err
+            return {"success": {"href": f"{SITE}/mijn-eneco/"}}
         token = re.sub(r"\\x([0-9a-fA-F]{2})", lambda m: chr(int(m[1], 16)), match[1])
         return await self._idx_post(f"{IDX_URL}/introspect", {"stateToken": token})
 

@@ -141,3 +141,20 @@ def test_scaled_amount_zero_and_missing():
     assert amount({"value": 2000, "scale": 5}) == 0.02
     assert amount({"value": 0, "scale": 5}) == 0
     assert amount(None) is None
+
+
+async def test_authorize_can_complete_by_redirect_without_idx_challenge():
+    async with aiohttp.ClientSession() as session:
+        client = EnecoClient(session, "", "")
+        with aioresponses() as mock:
+            mock.get(f"{SITE}/mijn-eneco/", body="portal")
+            mock.get(f"{SITE}/mijn-eneco/api/auth/csrf/", payload={"csrfToken": "test-csrf"})
+            mock.post(
+                f"{SITE}/mijn-eneco/api/auth/signin/okta/",
+                payload={"url": "https://inloggen.eneco.nl/authorize"},
+            )
+            mock.get("https://inloggen.eneco.nl/authorize", body="portal after completed callback")
+            mock.get(SESSION_URL, payload={"accessToken": "test-renewed-token"})
+            mock.get(f"{SITE}/mijn-eneco/", body="portal")
+            mock.get(SESSION_URL, payload={"accessToken": "test-renewed-token"})
+            await client.login()
