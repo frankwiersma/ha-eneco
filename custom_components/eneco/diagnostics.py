@@ -30,7 +30,7 @@ async def async_get_config_entry_diagnostics(
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "statistics": {
             "heat": coordinator.statistics.heat["unit_of_measurement"],
-            "imported_through": coordinator.statistics_through,
+            "imported_at": coordinator.statistics_imported_at,
         },
         "snapshot": async_redact_data(coordinator.data, TO_REDACT),
     }

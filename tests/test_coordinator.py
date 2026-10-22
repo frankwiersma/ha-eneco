@@ -18,7 +18,7 @@ def coordinator():
     obj.config_entry = SimpleNamespace(data={"cookies": []})
     obj.hass = SimpleNamespace(config_entries=SimpleNamespace(async_update_entry=MagicMock()))
     obj.statistics = SimpleNamespace(async_update=AsyncMock())
-    obj.statistics_through = None
+    obj.statistics_imported_at = None
     return obj
 
 
@@ -62,15 +62,13 @@ async def test_outage_does_not_start_login():
     obj.client.login.assert_not_called()
 
 
-async def test_statistics_import_once_per_new_reported_day():
+async def test_statistics_import_on_every_update_with_readings():
     obj = coordinator()
-    obj.client.snapshot.return_value = measured("2026-10-20T00:00:00Z")
+    obj.client.snapshot.return_value = measured("2026-10-22T00:00:00Z")
     await obj._async_update_data()
-    await obj._async_update_data()
-    obj.statistics.async_update.assert_awaited_once()
-    obj.client.snapshot.return_value = measured("2026-10-21T00:00:00Z")
     await obj._async_update_data()
     assert obj.statistics.async_update.await_count == 2
+    assert obj.statistics_imported_at is not None
 
 
 async def test_failed_statistics_import_keeps_sensors_and_retries():
@@ -78,8 +76,10 @@ async def test_failed_statistics_import_keeps_sensors_and_retries():
     obj.client.snapshot.return_value = measured("2026-10-20T00:00:00Z")
     obj.statistics.async_update.side_effect = [EnecoError(), None]
     assert await obj._async_update_data() == obj.client.snapshot.return_value
+    assert obj.statistics_imported_at is None
     await obj._async_update_data()
     assert obj.statistics.async_update.await_count == 2
+    assert obj.statistics_imported_at is not None
 
 
 async def test_no_reported_day_imports_nothing():

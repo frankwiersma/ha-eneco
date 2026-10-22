@@ -17,7 +17,7 @@ async def test_diagnostics_redact_private_data():
         },
         runtime_data=SimpleNamespace(
             statistics=SimpleNamespace(heat={"unit_of_measurement": "GJ"}),
-            statistics_through=None,
+            statistics_imported_at=None,
             data={
                 "usages": [{"entries": [{"weather": {"location": {"lat": 52.0, "lon": 5.0}}}]}],
                 "advice": {"current": 1},
