@@ -29,7 +29,7 @@ MAX_BACKFILL_CHUNKS = 104
 
 
 class EnecoStatistics:
-    """Keep the heat and heat-cost statistics in step with Eneco's hourly readings."""
+    """Keep heat, usage cost and fixed cost statistics in step with Eneco's hourly readings."""
 
     def __init__(
         self, hass: HomeAssistant, client: EnecoClient, customer_id: int, account_id: int
@@ -57,22 +57,43 @@ class EnecoStatistics:
             unit_class=None,
             unit_of_measurement="EUR",
         )
+        self.fixed = StatisticMetaData(
+            mean_type=StatisticMeanType.NONE,
+            has_sum=True,
+            name="Eneco heat fixed cost",
+            source=DOMAIN,
+            statistic_id=f"{prefix}_fixed_cost",
+            unit_class=None,
+            unit_of_measurement="EUR",
+        )
+        self.series = ((self.heat, "usage"), (self.cost, "cost"), (self.fixed, "fixed"))
+        self._backfilled = False
 
     async def async_update(self, today: date) -> None:
         """Import new hours and rewrite the recent ones that Eneco may have corrected."""
-        heat_id = self.heat["statistic_id"]
-        last = await get_instance(self.hass).async_add_executor_job(
-            get_last_statistics, self.hass, 1, heat_id, True, set()
-        )
-        if last:
-            last_day = dt_util.utc_from_timestamp(last[heat_id][0]["start"]).astimezone(ENECO_TZ)
-            hours = await self._fetch(last_day.date() - REVISE, today + timedelta(days=1))
-        else:
+        recorder = get_instance(self.hass)
+        starts = []
+        for metadata, _ in self.series:
+            statistic_id = metadata["statistic_id"]
+            last = await recorder.async_add_executor_job(
+                get_last_statistics, self.hass, 1, statistic_id, True, set()
+            )
+            starts.append(last[statistic_id][0]["start"] if last else None)
+        if None in starts and not self._backfilled:
+            # A first run, or a statistic added by an update, gets the full history;
+            # once per start, since Eneco may never report one of the series.
             hours = await self._backfill(today)
+            self._backfilled = True
+        else:
+            known = [start for start in starts if start is not None]
+            if not known:
+                return
+            last_day = dt_util.utc_from_timestamp(min(known)).astimezone(ENECO_TZ).date()
+            hours = await self._fetch(last_day - REVISE, today + timedelta(days=1))
         if not hours:
             return
         start = min(hours)
-        for metadata, field in ((self.heat, "usage"), (self.cost, "cost")):
+        for metadata, field in self.series:
             total = await self._sum_before(metadata["statistic_id"], start)
             rows = []
             for hour in sorted(hours):

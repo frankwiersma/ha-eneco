@@ -62,11 +62,17 @@ def test_corrected_day_is_not_counted_twice():
     assert period_total(data, date(2026, 10, 22), "usage") == 1
 
 
-def hour(label, high=None, low=None, cost=None, status="MEASURED"):
+def hour(label, high=None, low=None, cost=None, status="MEASURED", fixed=None):
     return {
         "actual": {
             "date": label,
-            "warmth": {"status": status, "high": high, "low": low, "totalUsageCostInclVat": cost},
+            "warmth": {
+                "status": status,
+                "high": high,
+                "low": low,
+                "totalUsageCostInclVat": cost,
+                "fixedCostInclVat": fixed,
+            },
         }
     }
 
@@ -76,7 +82,12 @@ def test_hours_are_dutch_wall_clock_in_utc():
         [
             {
                 "entries": [
-                    hour("2026-10-21T00:00:00Z", {"value": 1, "scale": 2}, cost={"value": 4}),
+                    hour(
+                        "2026-10-21T00:00:00Z",
+                        {"value": 1, "scale": 2},
+                        cost={"value": 4},
+                        fixed={"value": 7, "scale": 2},
+                    ),
                     hour("2026-10-21T01:00:00Z", {"value": 0}),
                     hour("2026-10-21T02:00:00Z", {"value": 9}, status="ESTIMATED"),
                     hour("2026-10-21T03:00:00Z"),
@@ -85,8 +96,8 @@ def test_hours_are_dutch_wall_clock_in_utc():
         ]
     )
     assert hours == {
-        datetime(2026, 10, 20, 22, tzinfo=UTC): {"usage": 0.01, "cost": 4},
-        datetime(2026, 10, 20, 23, tzinfo=UTC): {"usage": 0, "cost": None},
+        datetime(2026, 10, 20, 22, tzinfo=UTC): {"usage": 0.01, "cost": 4, "fixed": 0.07},
+        datetime(2026, 10, 20, 23, tzinfo=UTC): {"usage": 0, "cost": None, "fixed": None},
     }
 
 

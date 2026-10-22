@@ -16,6 +16,7 @@ from custom_components.eneco.statistics import EnecoStatistics
 
 HEAT = "eneco:heat_1_2"
 COST = "eneco:heat_1_2_cost"
+FIXED = "eneco:heat_1_2_fixed_cost"
 
 
 class FakeEneco:
@@ -40,6 +41,7 @@ class FakeEneco:
                                 "high": {"scale": 3, "value": usage},
                                 "low": {"scale": 3, "value": 0},
                                 "totalUsageCostInclVat": {"scale": 2, "value": usage * 4},
+                                "fixedCostInclVat": {"scale": 2, "value": 7},
                             },
                         }
                     }
@@ -86,6 +88,7 @@ async def test_backfill_stops_at_first_week_without_readings(setup, hass):
     assert heat[0]["start"] == datetime(2026, 10, 9, 22, tzinfo=UTC).timestamp()
     assert heat[-1]["sum"] == pytest.approx(11 * 24 * 0.001)
     assert (await read(hass, COST))[-1]["sum"] == pytest.approx(11 * 24 * 0.04)
+    assert (await read(hass, FIXED))[-1]["sum"] == pytest.approx(11 * 24 * 0.07)
     assert eneco.requests == [
         (date(2026, 10, 16), date(2026, 10, 23)),
         (date(2026, 10, 9), date(2026, 10, 16)),
@@ -115,3 +118,21 @@ async def test_update_rewrites_recent_days_and_continues_the_total(setup, hass):
     assert heat[-1]["sum"] == pytest.approx((12 * 24 + 24) * 0.001)
     sums = [row["sum"] for row in heat]
     assert sums == sorted(sums)
+
+
+async def test_statistic_added_by_an_update_gets_full_history(setup, hass):
+    eneco, stats = setup
+    stats.series = stats.series[:2]  # the release before fixed costs
+    await stats.async_update(date(2026, 10, 22))
+    assert await read(hass, FIXED) == []
+
+    updated = EnecoStatistics(hass, eneco, 1, 2)
+    eneco.requests.clear()
+    await updated.async_update(date(2026, 10, 22))
+    assert len(eneco.requests) == 3  # backfill again, once
+    assert len(await read(hass, FIXED)) == 11 * 24
+    assert (await read(hass, HEAT))[-1]["sum"] == pytest.approx(11 * 24 * 0.001)
+
+    eneco.requests.clear()
+    await updated.async_update(date(2026, 10, 22))
+    assert eneco.requests == [(date(2026, 10, 17), date(2026, 10, 23))]

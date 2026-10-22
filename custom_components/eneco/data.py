@@ -80,6 +80,7 @@ def heat_hours(usages: list[dict[str, Any]]) -> dict[datetime, dict[str, float |
             hours[start] = {
                 "usage": (high or 0) + (low or 0),
                 "cost": amount(warmth.get("totalUsageCostInclVat")),
+                "fixed": amount(warmth.get("fixedCostInclVat")),
             }
     return hours
 
