@@ -1,0 +1,36 @@
+{
+  "entity": {
+    "sensor": {
+      "heat_latest_day": {
+        "default": "mdi:radiator"
+      },
+      "heat_this_month": {
+        "default": "mdi:radiator"
+      },
+      "heat_previous_month": {
+        "default": "mdi:radiator"
+      },
+      "cost_latest_day": {
+        "default": "mdi:cash"
+      },
+      "cost_this_month": {
+        "default": "mdi:cash"
+      },
+      "cost_previous_month": {
+        "default": "mdi:cash"
+      },
+      "advance_payment": {
+        "default": "mdi:cash"
+      },
+      "advance_payment_advice": {
+        "default": "mdi:cash"
+      },
+      "forecast_difference": {
+        "default": "mdi:cash"
+      },
+      "usage_date": {
+        "default": "mdi:calendar-clock"
+      }
+    }
+  }
+}

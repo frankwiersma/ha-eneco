@@ -1,0 +1,67 @@
+{
+  "title": "Eneco",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mijn Eneco",
+        "description": "Sign in to Mijn Eneco. If Eneco requests an email code, enter it in the next step. Expired access requires signing in again.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "code": {
+        "title": "Email verification code",
+        "description": "Enter the verification code sent by Eneco.",
+        "data": {
+          "code": "Code"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid login credentials.",
+      "invalid_code": "Invalid or expired code. Retry or restart sign-in.",
+      "cannot_connect": "Cannot reach Eneco or read its response."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Reauthentication successful.",
+      "wrong_account": "Sign in with the same Eneco account.",
+      "cannot_connect": "Connection failed. Restart setup."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "heat_latest_day": {
+        "name": "Heat latest reported day"
+      },
+      "heat_this_month": {
+        "name": "Heat this month"
+      },
+      "heat_previous_month": {
+        "name": "Heat previous month"
+      },
+      "cost_latest_day": {
+        "name": "Heat cost latest reported day"
+      },
+      "cost_this_month": {
+        "name": "Heat cost this month"
+      },
+      "cost_previous_month": {
+        "name": "Heat cost previous month"
+      },
+      "advance_payment": {
+        "name": "Advance payment"
+      },
+      "advance_payment_advice": {
+        "name": "Recommended advance payment"
+      },
+      "forecast_difference": {
+        "name": "Forecast amount to pay at settlement"
+      },
+      "usage_date": {
+        "name": "Usage reported through"
+      }
+    }
+  }
+}
