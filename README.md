@@ -2,7 +2,7 @@
 
 Read your Mijn Eneco **district heating** consumption, costs and advance payment in Home Assistant. Unofficial integration, installed through HACS, with Dutch and English translations.
 
-**Early release (0.1.0).** Normal sign-in and reading a real heat account have been tested. Email-code handling and session renewal are covered by automated tests. Long-running operation and installation in a real Home Assistant instance have not yet been verified.
+**Early release (0.1.0).** Normal sign-in, reading a real heat account, restoring its saved session and repeating normal sign-in have been tested live. Email-code handling and expired-token recovery are covered by automated tests. Long-running operation and installation in a real Home Assistant instance have not yet been verified.
 
 ## Install
 
