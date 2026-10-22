@@ -1,6 +1,2 @@
-homeassistant==2025.10.4
-pycares<5
-pytest==9.1.1
-pytest-asyncio==1.4.0
-aioresponses==0.7.9
+pytest-homeassistant-custom-component==0.13.373
 ruff==0.17.1

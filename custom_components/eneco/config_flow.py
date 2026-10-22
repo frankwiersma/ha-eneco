@@ -70,7 +70,7 @@ class EnecoConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_code()
             except EnecoAuthError:
                 errors["base"] = "invalid_auth"
-            except (EnecoError, aiohttp.ClientError, TimeoutError, KeyError, TypeError, ValueError):
+            except EnecoError, aiohttp.ClientError, TimeoutError, KeyError, TypeError, ValueError:
                 errors["base"] = "cannot_connect"
             await self._close()
         return self.async_show_form(step_id="user", data_schema=LOGIN_SCHEMA, errors=errors)
@@ -83,9 +83,9 @@ class EnecoConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 await self._client.login(user_input["code"])
                 return await self._finish()
-            except (EnecoAuthError, EnecoCodeRequired):
+            except EnecoAuthError, EnecoCodeRequired:
                 errors["base"] = "invalid_code"
-            except (EnecoError, aiohttp.ClientError, TimeoutError, KeyError, TypeError, ValueError):
+            except EnecoError, aiohttp.ClientError, TimeoutError, KeyError, TypeError, ValueError:
                 await self._close()
                 return self.async_abort(reason="cannot_connect")
         return self.async_show_form(step_id="code", data_schema=CODE_SCHEMA, errors=errors)
